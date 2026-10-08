@@ -1,6 +1,6 @@
 # 次元机
 
-次元机是一个用于 LSPosed 的 Android 模块工程。当前版本只包含稳定的模块入口，不会对任何应用执行 Hook；等确定目标软件、进程和功能后，再在 `MainHook` 中加入对应逻辑。
+次元机是一个用于 LSPosed 的 Android 模块工程，当前目标应用包名为 `com.xunyou.rb`。模块会在检测到已登录后，后台加载应用原本的 `/sign` H5 页面完成每日签到，不进入“我的”页面，也不模拟控件点击。
 
 ## 本地构建
 
@@ -18,4 +18,4 @@ APK 位于 `app/build/outputs/apk/release/`。
 
 ## 后续接入 Hook
 
-提供目标应用的包名、需要修改的功能、Android 版本/架构，以及必要的类名或日志后，在 `app/src/main/java/com/ciyuanji/lsposed/MainHook.java` 中实现目标进程判断和 Hook。
+如果目标应用更新了签到入口或 WebActivity 类名，需要重新分析 APK 并更新 `MainHook`。

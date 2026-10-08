@@ -7,3 +7,5 @@ local.properties
 .externalNativeBuild/
 .cxx/
 app/build/
+.analysis/
+.tools/
