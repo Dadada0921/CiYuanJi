@@ -71,6 +71,7 @@ public final class MainHook implements IXposedHookLoadPackage {
                         WindowManager.LayoutParams attrs = activity.getWindow().getAttributes();
                         attrs.alpha = 0.0f;
                         activity.getWindow().setAttributes(attrs);
+                        activity.getWindow().getDecorView().setAlpha(0.0f);
 
                         activity.getWindow().getDecorView().postDelayed(() -> {
                             markRun(activity);
@@ -78,7 +79,7 @@ public final class MainHook implements IXposedHookLoadPackage {
                             if (!activity.isFinishing()) {
                                 activity.finish();
                             }
-                        }, 10000L);
+                        }, 8000L);
                     }
                 });
     }
