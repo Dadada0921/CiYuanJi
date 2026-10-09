@@ -66,22 +66,48 @@ public final class MainHook implements IXposedHookLoadPackage {
                             return;
                         }
 
-                        // Keep the original WebActivity and JS bridge alive,
-                        // but do not show its window to the user.
-                        WindowManager.LayoutParams attrs = activity.getWindow().getAttributes();
-                        attrs.alpha = 0.0f;
-                        activity.getWindow().setAttributes(attrs);
-                        activity.getWindow().getDecorView().setAlpha(0.0f);
-
-                        activity.getWindow().getDecorView().postDelayed(() -> {
-                            markRun(activity);
-                            signPageRunning = false;
-                            if (!activity.isFinishing()) {
-                                activity.finish();
-                            }
-                        }, 8000L);
+                        hideAndScheduleFinish(activity);
                     }
                 });
+
+        XposedHelpers.findAndHookMethod(
+                WEB_ACTIVITY,
+                lpparam.classLoader,
+                "onResume",
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Activity activity = (Activity) param.thisObject;
+                        if (SIGN_PATH.equals(activity.getIntent().getStringExtra("url"))) {
+                            hideAndScheduleFinish(activity);
+                        }
+                    }
+                });
+    }
+
+    private static void hideAndScheduleFinish(Activity activity) {
+        WindowManager.LayoutParams attrs = activity.getWindow().getAttributes();
+        attrs.alpha = 0.0f;
+        activity.getWindow().setAttributes(attrs);
+        activity.getWindow().getDecorView().setAlpha(0.0f);
+        activity.overridePendingTransition(0, 0);
+
+        activity.getWindow().getDecorView().postDelayed(() -> {
+            markRun(activity);
+            signPageRunning = false;
+            if (!activity.isFinishing()) {
+                activity.finish();
+                activity.overridePendingTransition(0, 0);
+
+                // Some WebView implementations immediately resume the page
+                // after finish(). Remove the temporary task as a last resort.
+                activity.getWindow().getDecorView().postDelayed(() -> {
+                    if (!activity.isFinishing() && !activity.isDestroyed()) {
+                        activity.finishAndRemoveTask();
+                    }
+                }, 1500L);
+            }
+        }, 3500L);
     }
 
     private static void startHiddenSignPage(Activity activity, ClassLoader classLoader) {
