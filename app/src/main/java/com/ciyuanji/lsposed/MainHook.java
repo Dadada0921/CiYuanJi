@@ -3,89 +3,89 @@ package com.ciyuanji.lsposed;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.WindowManager;
 
+import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Set;
+import java.util.WeakHashMap;
 
-import de.robv.android.xposed.IXposedHookLoadPackage;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.callbacks.XC_LoadPackage;
+import io.github.libxposed.api.XposedModule;
+import io.github.libxposed.api.XposedModuleInterface;
 
-/**
- * Automatic sign-in for com.xunyou.rb.
- *
- * <p>The APK's sign-in entry is an H5 page at /sign, loaded by the app's own
- * WebActivity. This hook starts that original page in a transparent Activity,
- * so the app supplies its normal login token and JS bridge. No UI navigation
- * to the Mine page and no hand-built API signature are needed.</p>
- */
-public final class MainHook implements IXposedHookLoadPackage {
+/** API 102 entry point for the automatic sign-in hook. */
+public final class MainHook extends XposedModule {
     private static final String MODULE_TAG = "[次元机]";
     private static final String TARGET_PACKAGE = "com.xunyou.rb";
     private static final String PREFS_NAME = "ciyuanji_auto_sign_in";
     private static final String PREF_LAST_RUN = "last_run_date";
     private static final String SIGN_PATH = "/sign";
+    private static final String HOME_ACTIVITY = "com.xunyou.apphome.ui.activity.HomeActivity";
     private static final String WEB_ACTIVITY = "com.xunyou.libservice.component.web.WebActivity";
 
     private static volatile boolean signPageRunning;
+    private final Set<Activity> scheduledSignPages =
+            Collections.newSetFromMap(new WeakHashMap<>());
 
     @Override
-    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
-        if (!TARGET_PACKAGE.equals(lpparam.packageName)) {
+    public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
+        if (!TARGET_PACKAGE.equals(param.getPackageName())) {
             return;
         }
 
-        XposedBridge.log(MODULE_TAG + " target process loaded");
+        ClassLoader classLoader = param.getClassLoader();
+        try {
+            Class<?> homeActivity = classLoader.loadClass(HOME_ACTIVITY);
+            Method homeOnResume = homeActivity.getDeclaredMethod("onResume");
+            hook(homeOnResume).setId("ciyuanji.home.onResume").intercept(chain -> {
+                Object result = chain.proceed();
+                startHiddenSignPage((Activity) chain.getThisObject(), classLoader);
+                return result;
+            });
 
-        XposedHelpers.findAndHookMethod(
-                "com.xunyou.apphome.ui.activity.HomeActivity",
-                lpparam.classLoader,
-                "onResume",
-                new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        Activity activity = (Activity) param.thisObject;
-                        startHiddenSignPage(activity, lpparam.classLoader);
-                    }
-                });
+            Class<?> webActivity = classLoader.loadClass(WEB_ACTIVITY);
+            Method webOnCreate = webActivity.getDeclaredMethod("onCreate", Bundle.class);
+            hook(webOnCreate).setId("ciyuanji.sign.onCreate").intercept(chain -> {
+                Object result = chain.proceed();
+                Activity activity = (Activity) chain.getThisObject();
+                if (isSignPage(activity)) {
+                    hideAndScheduleFinish(activity);
+                }
+                return result;
+            });
 
-        XposedHelpers.findAndHookMethod(
-                WEB_ACTIVITY,
-                lpparam.classLoader,
-                "onCreate",
-                Bundle.class,
-                new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        Activity activity = (Activity) param.thisObject;
-                        if (!SIGN_PATH.equals(activity.getIntent().getStringExtra("url"))) {
-                            return;
-                        }
+            Method webOnResume = webActivity.getDeclaredMethod("onResume");
+            hook(webOnResume).setId("ciyuanji.sign.onResume").intercept(chain -> {
+                Object result = chain.proceed();
+                Activity activity = (Activity) chain.getThisObject();
+                if (isSignPage(activity)) {
+                    hideAndScheduleFinish(activity);
+                }
+                return result;
+            });
 
-                        hideAndScheduleFinish(activity);
-                    }
-                });
-
-        XposedHelpers.findAndHookMethod(
-                WEB_ACTIVITY,
-                lpparam.classLoader,
-                "onResume",
-                new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        Activity activity = (Activity) param.thisObject;
-                        if (SIGN_PATH.equals(activity.getIntent().getStringExtra("url"))) {
-                            hideAndScheduleFinish(activity);
-                        }
-                    }
-                });
+            log(Log.INFO, MODULE_TAG, "API 102 hooks installed for " + TARGET_PACKAGE);
+        } catch (Throwable error) {
+            log(Log.ERROR, MODULE_TAG, "Failed to install sign-in hooks", error);
+        }
     }
 
-    private static void hideAndScheduleFinish(Activity activity) {
+    private static boolean isSignPage(Activity activity) {
+        Intent intent = activity.getIntent();
+        return intent != null && SIGN_PATH.equals(intent.getStringExtra("url"));
+    }
+
+    private void hideAndScheduleFinish(Activity activity) {
+        synchronized (scheduledSignPages) {
+            if (!scheduledSignPages.add(activity)) {
+                return;
+            }
+        }
+
         WindowManager.LayoutParams attrs = activity.getWindow().getAttributes();
         attrs.alpha = 0.0f;
         activity.getWindow().setAttributes(attrs);
@@ -98,9 +98,6 @@ public final class MainHook implements IXposedHookLoadPackage {
             if (!activity.isFinishing()) {
                 activity.finish();
                 activity.overridePendingTransition(0, 0);
-
-                // Some WebView implementations immediately resume the page
-                // after finish(). Remove the temporary task as a last resort.
                 activity.getWindow().getDecorView().postDelayed(() -> {
                     if (!activity.isFinishing() && !activity.isDestroyed()) {
                         activity.finishAndRemoveTask();
@@ -110,7 +107,7 @@ public final class MainHook implements IXposedHookLoadPackage {
         }, 3500L);
     }
 
-    private static void startHiddenSignPage(Activity activity, ClassLoader classLoader) {
+    private void startHiddenSignPage(Activity activity, ClassLoader classLoader) {
         if (signPageRunning || activity.isFinishing() || !isLoggedIn(classLoader)
                 || today().equals(activity.getSharedPreferences(PREFS_NAME, Activity.MODE_PRIVATE)
                 .getString(PREF_LAST_RUN, ""))) {
@@ -118,25 +115,26 @@ public final class MainHook implements IXposedHookLoadPackage {
         }
 
         try {
-            Class<?> webActivity = Class.forName(WEB_ACTIVITY, false, classLoader);
+            Class<?> webActivity = classLoader.loadClass(WEB_ACTIVITY);
             Intent intent = new Intent(activity, webActivity);
             intent.putExtra("url", SIGN_PATH);
             intent.putExtra("show", false);
             signPageRunning = true;
             activity.startActivity(intent);
-            XposedBridge.log(MODULE_TAG + " started hidden /sign WebActivity");
+            log(Log.INFO, MODULE_TAG, "Started hidden /sign WebActivity");
         } catch (Throwable error) {
             signPageRunning = false;
-            XposedBridge.log(MODULE_TAG + " failed to start /sign: " + error);
+            log(Log.ERROR, MODULE_TAG, "Failed to start /sign", error);
         }
     }
 
     private static boolean isLoggedIn(ClassLoader classLoader) {
         try {
-            Object session = XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("d3.d", classLoader), "c");
-            Object loggedIn = XposedHelpers.callMethod(session, "h");
-            return Boolean.TRUE.equals(loggedIn);
+            Class<?> sessionClass = classLoader.loadClass("d3.d");
+            Method getSession = sessionClass.getDeclaredMethod("c");
+            Object session = getSession.invoke(null);
+            Method isLoggedIn = session.getClass().getDeclaredMethod("h");
+            return Boolean.TRUE.equals(isLoggedIn.invoke(session));
         } catch (Throwable ignored) {
             return false;
         }
@@ -147,7 +145,7 @@ public final class MainHook implements IXposedHookLoadPackage {
                 .edit()
                 .putString(PREF_LAST_RUN, today())
                 .apply();
-        XposedBridge.log(MODULE_TAG + " hidden /sign page finished");
+        Log.i(MODULE_TAG, "Hidden /sign page finished");
     }
 
     private static String today() {

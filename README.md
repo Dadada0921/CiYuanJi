@@ -1,10 +1,10 @@
 # 次元机
 
-次元机是一个用于 LSPosed 的 Android 模块工程，当前目标应用包名为 `com.xunyou.rb`。模块会在检测到已登录后，后台加载应用原本的 `/sign` H5 页面完成每日签到，不进入“我的”页面，也不模拟控件点击。
+次元机是一个使用 libxposed Modern API 102 的 Android 模块工程，当前目标应用包名为 `com.xunyou.rb`。模块会在检测到已登录后，后台加载应用原本的 `/sign` H5 页面完成每日签到，不进入“我的”页面，也不模拟控件点击。
 
 ## 本地构建
 
-需要 JDK 17、Android SDK 35 和 Gradle 8.10：
+需要 JDK 17、Android SDK 37 和 Gradle 9.3.1。Xposed 入口与作用域配置位于 `app/src/main/resources/META-INF/xposed/`：
 
 ```bash
 gradle assembleRelease

@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace "com.ciyuanji.lsposed"
-    compileSdk 35
+    compileSdk 37
 
     defaultConfig {
         applicationId "com.ciyuanji.lsposed"
@@ -28,6 +28,6 @@ android {
 }
 
 dependencies {
-    // LSPosed/Xposed API is provided by the framework at runtime.
-    compileOnly "de.robv.android.xposed:api:82"
+    // Modern libxposed API is provided by the framework at runtime.
+    compileOnly "io.github.libxposed:api:102.0.0"
 }

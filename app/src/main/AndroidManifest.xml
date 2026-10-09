@@ -3,16 +3,8 @@
 
     <application
         android:label="次元机"
+        android:description="@string/module_description"
         android:theme="@style/Theme.CiYuanJi">
-        <meta-data
-            android:name="xposedmodule"
-            android:value="true" />
-        <meta-data
-            android:name="xposeddescription"
-            android:value="次元机 LSPosed 模块" />
-        <meta-data
-            android:name="xposedminversion"
-            android:value="93" />
     </application>
 
 </manifest>

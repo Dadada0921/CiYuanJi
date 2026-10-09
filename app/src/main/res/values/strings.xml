@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">次元机</string>
+    <string name="module_description">次元姬自动签到 LSPosed 模块</string>
 </resources>
